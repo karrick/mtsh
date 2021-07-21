@@ -21,16 +21,18 @@ single host `foo.example.com`.
 mtsh foo.example.com
 ```
 
-NOTE: This program invokes the `ssh` executable found in the `PATH` of
-the local machine, and `ssh` will use the configuration options for
-each remote connection that it creates in accordance with the
-documentation found in `man ssh_config`. If additional `ssh`
-configuration parameters are required for hosts, one typically puts
-them in their personal `ssh` configuration file found in
-`~/.ssh/config`.
+NOTE: This program invokes the `screen`, `ssh`, and `tmux` executable
+programs found in the `PATH` of the originating terminal, and each
+program will use their respective configuration files.
 
-The below example creates two new terminals and in each connects to
-one of each of the hosts specified on the command line.
+Of particular note, `ssh` will use the configuration options for each
+remote connection that it creates in accordance with the documentation
+found in `man 5 ssh_config`. If additional `ssh` configuration
+parameters are required for hosts, one typically puts them in their
+personal `ssh` configuration file found in `~/.ssh/config`.
+
+The below example creates two new terminals and in each newly created
+terminal connects to one of the hosts specified on the command line.
 
 ```Bash
 mtsh foo.example.com bar.example.com
@@ -38,53 +40,68 @@ mtsh foo.example.com bar.example.com
 
 ### Running a single command on each host
 
-The below example creates two new terminals and connects to each host
-specified in the command line, but rather than invoking the user's
-default login shell on each of the remote hosts, invokes the `htop`
-command:
+One may use the `-c COMMAND` command line option to specify a
+particular command to execute on the remote hosts, in lieu of the
+user's default login program.
 
 ```Bash
 mtsh -c htop foo.example.com bar.example.com
 ```
 
-You may use single or double quotes to quote the command line option's
-argument when the command string has special characters.
+One may use either single or double quotes to quote the command line
+option's argument when the command string has special characters.
 
 ```Bash
 mtsh -c 'tail -F /var/log/messages' foo.example.com bar.example.com
 ```
 
 As one might expect, when double quotes are used, the invoking shell
-on the local system will interpolate the string before sending the
-command to the remote hosts. Whereas when single quotes are used, the
-invoking shell on the remote connection will interpolate the string.
+on the originating host will interpolate the string before sending the
+command to the remote hosts. However, when single quotes are used, the
+invoking shell on the remote connection will interpolate the
+string. If the default login shell for the local host and remote host
+were different, the below two commands would yield different output.
 
 ```Bash
 mtsh -c 'echo $SHELL' foo.example.com
 mtsh -c "echo $SHELL" foo.example.com
 ```
 
-### Use -g command line argument to group newly created terminals
+### Grouping newly created terminals
+
+One may use the `-g GROUP_NAME` command line option to group multiple
+terminals under a provided name.
 
 ```Bash
 mtsh -g messsages -c 'tail -F /var/log/messages' foo.example.com bar.example.com
 ```
 
-NOTE: When running `tmux` or `screen` inside either Apple Terminal or
-iTerm, this program applies rules specific to `tmux` or `screen` and
-ignores Apple Terminal and iTerm.
+Grouping terminal behavior is dependent on what terminal program is
+being used on the originating host. When running `screen` or `tmux`
+inside either Apple Terminal or iTerm, this program applies rules
+specific to `screen` or `tmux` and ignores the fact that that terminal
+program is running inside Apple Terminal or iTerm.
 
-NOTE: On `tmux`, when not grouping, this program creates a new tmux
-window for each host. When grouping, this program creates a new tmux
-window named using the specified group name, and inside that tmux
-window creates a new pane for each host.
-
-NOTE: On `screen`, when not grouping, this program creates a new
+*NOTE:* On `screen`, when not grouping, this program creates a new
 screen window for each host named after the host. When grouping, each
 screen window will use the group name as the window name prefix before
 the hostname.
 
-NOTE: On Apple Terminal and iTerm, when not grouping, a new tab in the
-current window will be created for each host. When grouping, this
+*NOTE:* On `tmux`, when not grouping, this program creates a new tmux
+window for each host. When grouping, this program creates a new tmux
+window named using the specified group name, and inside that tmux
+window creates a new pane for each host.
+
+*NOTE:* On Apple Terminal or iTerm, and not grouping, a new tab in
+the current window will be created for each host. When grouping, this
 program creates a new window, then creates a new tab in that window
 for each host.
+
+### Trimming off a common host suffix from titles
+
+One may use the `-t TRIM_SUFFIX` to trim off a string suffix that is
+common to the host names.
+
+```Bash
+mtsh -t .example.com foo.example.com bar.example.com
+```
