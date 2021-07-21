@@ -20,7 +20,7 @@ mtsh () {
             d) debug=true ;;
             f) hosts=$(<$OPTARG) || error="cannot read file: $OPTARG" ;;
             g) group=$OPTARG ;;
-            h) echo "usage: ${0##*/} [-c 'COMMAND ARG1 ARG2'] [-d] [-g GROUPNAME] [-t TRIMSUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
+            h) echo "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g GROUPNAME] [-t TRIMSUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
                return 0 ;;
             t) trim=$OPTARG ;;
             :) error="missing required argument for option: -$OPTARG" ;;
@@ -43,7 +43,7 @@ mtsh () {
 
     if [ -n "$error" ] ; then
         echo >&2 $error
-        echo >&2 "usage: ${0##*/} [-c 'command arg1 arg2'] [-d] [-g GROUPNAME] [-t TRIMSUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
+        echo >&2 "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g GROUPNAME] [-t TRIMSUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
         return 2
     fi
 
