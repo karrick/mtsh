@@ -1,0 +1,146 @@
+#!/bin/bash
+
+# mtsh -- multiple shells
+
+mtsh () {
+    local command=
+    local debug=
+    local error=
+    local group=
+    local host=
+    local hosts=
+    local opt=
+    local target=
+    local title=
+    local trim=
+
+    while getopts ":c:df:g:ht:" opt ; do
+        case $opt in
+            c) command=$OPTARG ;;
+            d) debug=true ;;
+            f) hosts=$(<$OPTARG) || error="cannot read file: $OPTARG" ;;
+            g) group=$OPTARG ;;
+            h) echo "usage: ${0##*/} [-c 'COMMAND ARG1 ARG2'] [-d] [-g GROUPNAME] [-t TRIMSUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
+               return 0 ;;
+            t) trim=$OPTARG ;;
+            :) error="missing required argument for option: -$OPTARG" ;;
+            \?) error="illegal option: $OPTARG" ;;
+        esac
+    done
+    shift $((OPTIND - 1)) ; OPTIND=1
+
+    if [ -z "$error" ] ; then
+        if [ -z "$hosts" ] ; then
+            if [ $# -eq 0 ] ; then
+                error="which hosts?"
+            else
+                hosts="$@"
+            fi
+        elif [ $# -ne 0 ] ; then
+            error="specify hosts using either -f or as list of command line arguments"
+        fi
+    fi
+
+    if [ -n "$error" ] ; then
+        echo >&2 $error
+        echo >&2 "usage: ${0##*/} [-c 'command arg1 arg2'] [-d] [-g GROUPNAME] [-t TRIMSUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
+        return 2
+    fi
+
+    for host in $hosts ; do
+        if [ -n "$debug" ] ; then
+            echo "ssh -t $host $command"
+            continue
+        fi
+
+        title=${host%$trim} # remove optionally specified suffix from host name
+
+        if [ -n "$TMUX" ] ; then
+            if [ -n "$group" ] ; then
+                # For tmux, when grouping, create a single new window
+                # named by the group name, then create a pane for each
+                # host.
+                if [ -z "$target" ] ; then
+                    # create new window, saving target name
+                    target=$(tmux new-window -P -c $HOME -d -n $group ssh -t $host $command)
+                    tmux set-option -t $target -w synchronize-panes on
+                    # tmux set-option -t $target -w set-titles-string $group
+                elif ! tmux split-window -c $HOME -t $target ssh -t $host $command 2>/dev/null ; then
+                    # NOTE: cannot split-window when too small, so re-tile panes in window and try again
+                    tmux select-layout -t $target tiled
+                    sleep 0.3
+                    tmux split-window -c $HOME -t $target ssh -t $host $command
+                    if [ $? -ne 0 ] ; then
+                        echo >&2 "tmux cannot split-window when too small"
+                        return
+                    fi
+                fi
+            else
+                # For tmux, when not grouping, create a new window for
+                # each host.
+                tmux new-window -c $HOME -d -n $title ssh -t $host $command
+            fi
+        elif [[ $TERM =~ ^screen ]]; then
+            # For screen, when not grouping, create a new window for
+            # each host. When grouping, create a new window for each
+            # host, using the group name to prefix the window name.
+            #
+            # TODO: When not grouping, create a new window for each
+            # host in the current session, using the group name to
+            # prefix the window name. When grouping, create a new
+            # session named from the group, then create a new window
+            # in that session for each host.
+            screen -t "${group}${title}" ssh -t $host $command
+        elif [ "$TERM_PROGRAM" == "Apple_Terminal" ] ; then
+            # For Apple Terminal, when not grouping, create a new tab
+            # in the current window for each host. When grouping,
+            # create new window and then create a new tab in that
+            # window for each host.
+            if [ -n "$target" -o -z "$group" ] ; then
+                osascript \
+                    -e "tell application \"Terminal\"" \
+                    -e "  tell application \"System Events\" to keystroke \"t\" using {command down}" \
+                    -e "  do script \"ssh -t $host \\\"$command\\\"\" in front window" \
+                    -e "end tell" > /dev/null
+            else
+                osascript \
+                    -e "tell application \"Terminal\"" \
+                    -e "  tell application \"System Events\" to keystroke \"n\" using {command down}" \
+                    -e "  do script \"ssh -t $host \\\"$command\\\"\" in front window" \
+                    -e "end tell" > /dev/null
+                target=done
+            fi
+        elif [ "$TERM_PROGRAM" == "iTerm.app" ] ; then
+            # For iTerm, when not grouping, create a new tab in the
+            # current window for each host. When grouping, create new
+            # window and then create a new tab in that window for each
+            # host.
+            if [ -n "$target" -o -z "$group" ] ; then
+                osascript \
+                    -e "tell application \"iTerm2\"" \
+                    -e "  tell current window" \
+                    -e "    create tab with default profile command \"ssh -t $host \\\"$command\\\"\"" \
+                    -e "  end tell" \
+                    -e "end tell" > /dev/null
+            else
+                osascript \
+                    -e "tell application \"iTerm2\"" \
+                    -e "  set newWindow to (create window with default profile command \"ssh -t $host \\\"$command\\\"\")" \
+                    -e "end tell" > /dev/null
+                target=done
+            fi
+        else
+            ssh -t $host $command
+        fi
+    done
+
+    if [ -z "$debug" -a -n "$TMUX" -a -n "$group" ] ; then
+        # NOTE: Perform a final rebalance of-tile the panes in the tmux window
+        tmux select-layout -t $target tiled
+    fi
+}
+
+case $# in
+    0) : ;;
+    *) mtsh "$@" ;;
+esac
