@@ -23,7 +23,7 @@ mtsh () {
     while getopts ":c:df:ghp:s:" opt ; do
         case $opt in
             c) command=$OPTARG ;;
-            d) debug=true ;;
+            d) debug=1 ;;
             f) hosts=$(<$OPTARG) || error="cannot read file: $OPTARG" ;;
             g) group=1 ;;
             h) echo "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g] [-p PREFIX] [-s SUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
