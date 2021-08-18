@@ -6,19 +6,17 @@ mtsh () {
     local command=
     local debug=
     local error=
+    local first=
     local group=
+    local hi=
     local host=
     local hosts=
-    local opt=
-    local target=
-    local title=
-    local trim=
-
-    local first=
     local length=
+    local opt=
     local prefix=
     local suffix=
-    local hi=
+    local target=
+    local title=
 
     while getopts ":c:df:ghp:s:" opt ; do
         case $opt in
