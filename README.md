@@ -69,11 +69,11 @@ mtsh -c "echo $SHELL" foo.example.com
 
 ### Grouping newly created terminals
 
-One may use the `-g GROUP_NAME` command line option to group multiple
-terminals under a provided name.
+One may use the `-g` command line option to group multiple
+terminals.
 
 ```Bash
-mtsh -g messsages -c 'tail -F /var/log/messages' foo.example.com bar.example.com
+mtsh -g -c 'tail -F /var/log/messages' foo.example.com bar.example.com
 ```
 
 Grouping terminal behavior is dependent on what terminal program is
@@ -97,11 +97,22 @@ the current window will be created for each host. When grouping, this
 program creates a new window, then creates a new tab in that window
 for each host.
 
-### Trimming off a common host suffix from titles
+### Trimming off a common host prefix and suffix strings from titles
 
-One may use the `-t TRIM_SUFFIX` to trim off a string suffix that is
-common to the host names.
+#### Common Hostname Prefix is used for the window group name
+
+The -p PREFIX argument allows specifying what PREFIX string to remove
+from each of the host names. When omitted, the common prefix string of
+all provided hosts will be used.
+
+The -s SUFFIX argument allows specifying what SUFFIX string to remove
+from each of the host names. When omitted, the common suffix string of
+all provided hosts will be used.
+
+In the below example, the longest common suffix is `.example.com`, and
+would be stripped from each of the host names.
 
 ```Bash
-mtsh -t .example.com foo.example.com bar.example.com
+mtsh -s .com foo.example.com bar.example.com
 ```
+

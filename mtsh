@@ -14,15 +14,22 @@ mtsh () {
     local title=
     local trim=
 
-    while getopts ":c:df:g:ht:" opt ; do
+    local first=
+    local length=
+    local prefix=
+    local suffix=
+    local hi=
+
+    while getopts ":c:df:ghp:s:" opt ; do
         case $opt in
             c) command=$OPTARG ;;
             d) debug=true ;;
             f) hosts=$(<$OPTARG) || error="cannot read file: $OPTARG" ;;
-            g) group=$OPTARG ;;
-            h) echo "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g GROUPNAME] [-t TRIMSUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
+            g) group=1 ;;
+            h) echo "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g] [-p PREFIX] [-s SUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
                return 0 ;;
-            t) trim=$OPTARG ;;
+            p) prefix=$OPTARG ;;
+            s) suffix=$OPTARG ;;
             :) error="missing required argument for option: -$OPTARG" ;;
             \?) error="illegal option: $OPTARG" ;;
         esac
@@ -43,17 +50,52 @@ mtsh () {
 
     if [ -n "$error" ] ; then
         echo >&2 $error
-        echo >&2 "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g GROUPNAME] [-t TRIMSUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
+        echo >&2 "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g] [-p PREFIX] [-s SUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
         return 2
     fi
 
+    # When more than a single host specified, determine common prefix
+    # and suffix, unless already specified.
+    if [ $# -gt 1 ] ; then
+        first=$1
+        shift
+        length=${#first}
+
+        if [ -z "$prefix" ] ; then
+            for i in $(seq $length) ; do
+                prefix=${first:0:i}
+                for host in $@ ; do
+                    [ "$prefix" != "${host:0:i}" ] && break 2
+                done
+            done
+            prefix=${first:0:$((i-1))}
+            # echo >&2 "prefix: \"$prefix\""
+        fi
+        if [ -z "$suffix" ] ; then
+            for i in $(seq $length) ; do
+                suffix=${first:$(($length-$i))}
+                for host in $@ ; do
+                    hi=$((${#host}-$i))
+                    [ $hi -le 0 ]  && break 2 # $first is longer than $host
+                    [ "$suffix" != "${host:$hi}" ] && break 2 # mismatch at $i characters before end
+                done
+            done
+            suffix=${first:$(($length-$((i-1))))}
+            # echo >&2 "suffix: \"$suffix\""
+        fi
+        # Unshift the first argument back to the list of all arguments.
+        set -- ${first:+"$first"} "$@"
+    fi
+
     for host in $hosts ; do
+        title=${host#$prefix}
+        title=${title%$suffix}
+
         if [ -n "$debug" ] ; then
             echo "ssh -t $host $command"
+            # echo "$host: $prefix | $title | $suffix"
             continue
         fi
-
-        title=${host%$trim} # remove optionally specified suffix from host name
 
         if [ -n "$TMUX" ] ; then
             if [ -n "$group" ] ; then
@@ -62,9 +104,9 @@ mtsh () {
                 # host.
                 if [ -z "$target" ] ; then
                     # create new window, saving target name
-                    target=$(tmux new-window -P -c $HOME -d -n $group ssh -t $host $command)
+                    target=$(tmux new-window -P -c $HOME -d -n $prefix ssh -t $host $command)
                     tmux set-option -t $target -w synchronize-panes on
-                    # tmux set-option -t $target -w set-titles-string $group
+                    # tmux set-option -t $target -w set-titles-string $prefix
                 elif ! tmux split-window -c $HOME -t $target ssh -t $host $command 2>/dev/null ; then
                     # NOTE: cannot split-window when too small, so re-tile panes in window and try again
                     tmux select-layout -t $target tiled
