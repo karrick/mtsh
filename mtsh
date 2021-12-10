@@ -1,28 +1,16 @@
-#!/bin/bash
+#! /bin/sh
 
 # mtsh -- multiple shells
 
 mtsh () {
-    local command=
-    local debug=
-    local error=
-    local first=
-    local group=
-    local hi=
-    local host=
-    local hosts=
-    local length=
-    local opt=
-    local prefix=
-    local suffix=
-    local target=
-    local title=
+    local command debug error file first group hi host hosts length opt prefix suffix target title
+    local first length i prefix c fi suffix cl ci uniqs ct
 
     while getopts ":c:df:ghp:s:" opt ; do
         case $opt in
             c) command=$OPTARG ;;
             d) debug=1 ;;
-            f) hosts=$(<$OPTARG) || error="cannot read file: $OPTARG" ;;
+            f) hosts=$(tr -s '\n' ' ' < $OPTARG) || error="cannot read file: $OPTARG" ;;
             g) group=1 ;;
             h) echo "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g] [-p PREFIX] [-s SUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
                return 0 ;;
@@ -38,11 +26,14 @@ mtsh () {
         if [ -z "$hosts" ] ; then
             if [ $# -eq 0 ] ; then
                 error="which hosts?"
-            else
-                hosts="$@"
             fi
-        elif [ $# -ne 0 ] ; then
-            error="specify hosts using either -f or as list of command line arguments"
+        else
+            if [ $# -gt 0 ] ; then
+                error="specify hosts using either -f or as list of command line arguments"
+            else
+                set -- $hosts
+                hosts=
+            fi
         fi
     fi
 
@@ -57,37 +48,115 @@ mtsh () {
     if [ $# -gt 1 ] ; then
         first=$1
         shift
-        length=${#first}
 
         if [ -z "$prefix" ] ; then
-            for i in $(seq $length) ; do
-                prefix=${first:0:i}
-                for host in $@ ; do
-                    [ "$prefix" != "${host:0:i}" ] && break 2
+            # Attempt to determine the common prefix for all of the
+            # command line arguments.
+            length=${#first}
+            i=1
+            while [ $length -ge $i ] ; do
+                prefix=$(echo $first | cut -c 1-$i)
+                for c in $@ ; do
+                    [ "$prefix" != "$(echo $c | cut -c 1-$i)" ] && break 2
                 done
+                i=$((i+1))
             done
-            prefix=${first:0:$((i-1))}
-            # echo >&2 "prefix: \"$prefix\""
+            if [ $i -gt 1 ] ; then
+                prefix=$(echo $first | cut -c 1-$((i-1)) )
+            else
+                prefix=
+            fi
         fi
+
+        if [ -n "$prefix" ] ; then
+            # Ensure every command line argument is at least as long
+            # as the prefix.
+            uniqs=
+            for c in $first $@; do
+                if [ "$c" = "$prefix" ] ; then
+                    prefix=
+                    break
+                fi
+                ct=${c#$prefix}
+                if [ "$ct" = "$c" ] ; then
+                    prefix=
+                    break
+                fi
+                uniqs="$uniqs $ct"
+            done
+        fi
+
+        if [ -n "$prefix" ] ; then
+            # When prefix still set, then save the trimmed version as
+            # the new command line arguments.
+            set -- $uniqs
+        else
+            # When prefix is not set, then save the original command
+            # line arguments, including the first one.
+            set -- $first $@
+        fi
+
+        first=$1
+        shift
+
         if [ -z "$suffix" ] ; then
-            for i in $(seq $length) ; do
-                suffix=${first:$(($length-$i))}
-                for host in $@ ; do
-                    hi=$((${#host}-$i))
-                    [ $hi -le 0 ]  && break 2 # $first is longer than $host
-                    [ "$suffix" != "${host:$hi}" ] && break 2 # mismatch at $i characters before end
+            # Attempt to determine the common suffix for all of the
+            # potentially trimmed command line arguments.
+            length=${#first}
+            i=0
+            while [ $length -gt $i ] ; do
+                fi=$((length-i))
+                suffix=$(echo $first | cut -c $fi-$length)
+                for c in $@ ; do
+                    cl=${#c}
+                    ci=$((cl-i))
+                    [ $ci -eq 0 ] && break 2
+                    [ "$suffix" != "$(echo $c | cut -c $ci-$cl)" ] && break 2
                 done
+                i=$((i+1))
             done
-            suffix=${first:$(($length-$((i-1))))}
-            # echo >&2 "suffix: \"$suffix\""
+            if [ $i -gt 0 ] ; then
+                suffix=$(echo $first | cut -c $((length - i + 1))-$length)
+            else
+                suffix=
+            fi
         fi
-        # Unshift the first argument back to the list of all arguments.
-        set -- ${first:+"$first"} "$@"
+
+        if [ -n "$suffix" ] ; then
+            # Ensure every potentially already trimmed command line
+            # arguments are at least as long as the suffix.
+            uniqs=
+            for c in $first $@; do
+                if [ "$c" = "$suffix" ] ; then
+                    suffix=
+                    break
+                fi
+                ct=${c%$suffix}
+                if [ "$ct" = "$c" ] ; then
+                    prefix=
+                    break
+                fi
+                uniqs="$uniqs $ct"
+            done
+        fi
+
+        if [ -n "$suffix" ] ; then
+            # When suffix still set, then save the trimmed version as
+            # the new command line arguments.
+            set -- $uniqs
+        else
+            # When suffix is not set, then save the original command
+            # line arguments, including the first one.
+            set -- $first $@
+        fi
     fi
 
-    for host in $hosts ; do
-        title=${host#$prefix}
-        title=${title%$suffix}
+    for title ; do
+        echo "$prefix<$title>$suffix"
+    done
+
+    for title ; do
+        host=${prefix}${title}${suffix}
 
         if [ -n "$debug" ] ; then
             echo "ssh -t $host $command"
@@ -112,7 +181,7 @@ mtsh () {
                     tmux split-window -c $HOME -t $target ssh -t $host $command
                     if [ $? -ne 0 ] ; then
                         echo >&2 "tmux cannot split-window when too small"
-                        return
+                        return 1
                     fi
                 fi
             else
@@ -130,7 +199,7 @@ mtsh () {
             # prefix the window name. When grouping, create a new
             # session named from the group, then create a new window
             # in that session for each host.
-            screen -t "${group}${title}" ssh -t $host $command
+            screen -t "$title" ssh -t $host $command
         elif [ "$TERM_PROGRAM" == "Apple_Terminal" ] ; then
             # For Apple Terminal, when not grouping, create a new tab
             # in the current window for each host. When grouping,
