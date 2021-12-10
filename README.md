@@ -115,4 +115,3 @@ would be stripped from each of the host names.
 ```Bash
 mtsh -s .com foo.example.com bar.example.com
 ```
-

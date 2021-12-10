@@ -1,6 +1,6 @@
 #! /bin/sh
 
-# mtsh -- multiple shells
+# mtsh -- multiterm shell
 
 mtsh () {
     local command debug error file first group hi host hosts length opt prefix suffix target title
