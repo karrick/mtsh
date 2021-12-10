@@ -151,16 +151,23 @@ mtsh () {
         fi
     fi
 
-    for title ; do
-        echo "$prefix<$title>$suffix"
-    done
+    if [ -n "$group" ] ; then
+        if [ $# -eq 1 ] ; then
+            group=
+        elif [ -n "$prefix" ] ; then
+            group=$prefix
+        elif [ -n "$suffix" ] ; then
+            group=$suffix
+        else
+            group=group$$
+        fi
+    fi
 
     for title ; do
         host=${prefix}${title}${suffix}
-
         if [ -n "$debug" ] ; then
-            echo "ssh -t $host $command"
-            # echo "$host: $prefix | $title | $suffix"
+            echo "$prefix<$title>$suffix"
+            # echo "ssh -t $host $command"
             continue
         fi
 
@@ -171,9 +178,9 @@ mtsh () {
                 # host.
                 if [ -z "$target" ] ; then
                     # create new window, saving target name
-                    target=$(tmux new-window -P -c $HOME -d -n $prefix ssh -t $host $command)
+                    target=$(tmux new-window -P -c $HOME -d -n $group ssh -t $host $command)
                     tmux set-option -t $target -w synchronize-panes on
-                    # tmux set-option -t $target -w set-titles-string $prefix
+                    # tmux set-option -t $target -w set-titles-string $title
                 elif ! tmux split-window -c $HOME -t $target ssh -t $host $command 2>/dev/null ; then
                     # NOTE: cannot split-window when too small, so re-tile panes in window and try again
                     tmux select-layout -t $target tiled
