@@ -3,17 +3,24 @@
 # mtsh -- multiterm shell
 
 mtsh () {
-    local command debug error file first group hi host hosts length opt prefix suffix target title
+    local command debug error file first group hi host hosts length name opt prefix suffix target title
     local first length i prefix c fi suffix cl ci uniqs ct
 
-    while getopts ":c:df:ghp:s:" opt ; do
+	# NOTE: Both -g (group) and -n NAME will attempt to group sessions
+	# together in a tmux window if tmux server is running. A (-g) without (-n
+	# NAME) this will use the longest prefix of the hostnames combined with
+	# the longest suffix of the hostnames. With (-n NAME) the tmux window will
+	# be named NAME.
+
+    while getopts ":c:df:ghn:p:s:" opt ; do
         case $opt in
             c) command=$OPTARG ;;
             d) debug=1 ;;
             f) hosts=$(tr -s '\n' ' ' < $OPTARG) || error="cannot read file: $OPTARG" ;;
             g) group=1 ;;
-            h) echo "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g] [-p PREFIX] [-s SUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
+            h) echo "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g] [-n NAME] [-p PREFIX] [-s SUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
                return 0 ;;
+			n) name=$OPTARG ; group=1 ;; # name implies group
             p) prefix=$OPTARG ;;
             s) suffix=$OPTARG ;;
             :) error="missing required argument for option: -$OPTARG" ;;
@@ -39,7 +46,7 @@ mtsh () {
 
     if [ -n "$error" ] ; then
         echo >&2 $error
-        echo >&2 "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g] [-p PREFIX] [-s SUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
+        echo >&2 "usage: mtsh [-c 'COMMAND ARG1 ARG2'] [-d] [-g] [-n NAME] [-p PREFIX] [-s SUFFIX] [-f /some/hosts/file | HOST1 [HOST2 [host3]]]"
         return 2
     fi
 
@@ -151,19 +158,29 @@ mtsh () {
         fi
     fi
 
-    if [ -n "$group" ] ; then
-        if [ $# -eq 1 ] ; then
-            group=
-        elif [ -n "$prefix" ] ; then
-            group=$prefix
-        elif [ -n "$suffix" ] ; then
-            group=$suffix
-        else
-            group=group$$
-        fi
-    fi
+    if [ -n "$group" ] && [ -z "$name" ] ; then
+		if [ $# -eq 1 ] ; then
+			name=
+		elif [ -n "$prefix" ] ; then
+			if [ -n "$suffix" ] ; then
+				name="${prefix}*${suffix}"
+			else
+				name=$prefix
+			fi
+		elif [ -n "$suffix" ] ; then
+			name=$suffix
+		else
+			name=group$$
+		fi
+	fi
 
-    for title ; do
+	# echo PREFIX: [$prefix]
+	# echo SUFFIX: [$suffix]
+	# echo NAME: [$name]
+	# echo ARGS: $@
+	# return
+
+	for title ; do
         host=${prefix}${title}${suffix}
         if [ -n "$debug" ] ; then
             echo "$prefix<$title>$suffix"
@@ -172,13 +189,13 @@ mtsh () {
         fi
 
         if [ -n "$TMUX" ] ; then
-            if [ -n "$group" ] ; then
+            if [ -n "$name" ] ; then
                 # For tmux, when grouping, create a single new window
                 # named by the group name, then create a pane for each
                 # host.
                 if [ -z "$target" ] ; then
                     # create new window, saving target name
-                    target=$(tmux new-window -P -c $HOME -d -n $group ssh -t $host $command)
+                    target=$(tmux new-window -P -c $HOME -d -n $name ssh -t $host $command)
                     tmux set-option -t $target -w synchronize-panes on
                     # tmux set-option -t $target -w set-titles-string $title
                 elif ! tmux split-window -c $HOME -t $target ssh -t $host $command 2>/dev/null ; then
@@ -212,7 +229,7 @@ mtsh () {
             # in the current window for each host. When grouping,
             # create new window and then create a new tab in that
             # window for each host.
-            if [ -n "$target" -o -z "$group" ] ; then
+            if [ -n "$target" -o -z "$name" ] ; then
                 osascript \
                     -e "tell application \"Terminal\"" \
                     -e "  tell application \"System Events\" to keystroke \"t\" using {command down}" \
@@ -231,7 +248,7 @@ mtsh () {
             # current window for each host. When grouping, create new
             # window and then create a new tab in that window for each
             # host.
-            if [ -n "$target" -o -z "$group" ] ; then
+            if [ -n "$target" -o -z "$name" ] ; then
                 osascript \
                     -e "tell application \"iTerm2\"" \
                     -e "  tell current window" \
@@ -250,7 +267,7 @@ mtsh () {
         fi
     done
 
-    if [ -z "$debug" -a -n "$TMUX" -a -n "$group" ] ; then
+    if [ -z "$debug" -a -n "$TMUX" -a -n "$name" ] ; then
         # NOTE: Perform a final rebalance of-tile the panes in the tmux window
         tmux select-layout -t $target tiled
     fi
